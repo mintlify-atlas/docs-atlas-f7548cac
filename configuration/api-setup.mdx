@@ -1,0 +1,123 @@
+---
+title: "API setup"
+description: "Configuring the backend API connection for the Orion GoNet Platform"
+keywords: ["api", "axios", "base url", "backend", "interceptor", "mockoon", "cloudflare", "jwt"]
+---
+
+All HTTP communication in the Orion GoNet Platform goes through a single Axios instance defined in `src/utils/api.js`. This file sets the base URL, attaches the JWT token to every request, and handles response errors.
+
+## The Axios instance
+
+```javascript src/utils/api.js
+import axios from 'axios'
+import { useAuthStore } from '../stores/auth'
+
+const api = axios.create({
+  baseURL: 'https://pentium-kitty-comic-trembl.trycloudflare.com',
+  headers: {
+    'Content-Type': 'application/json'
+  }
+})
+
+api.interceptors.request.use((config) => {
+  const authStore = useAuthStore()
+  if (authStore.token) {
+    config.headers.Authorization = `Bearer ${authStore.token}`
+  }
+  return config
+})
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    console.error('Error en petición:', error)
+    return Promise.reject(error)
+  }
+)
+
+export default api
+```
+
+### Request interceptor
+
+Before every request is sent, the interceptor reads the current JWT token from the Pinia `authStore`. If a token is present, it is attached as an `Authorization: Bearer {token}` header. No manual header management is needed at the call site.
+
+### Response interceptor
+
+On any error response, the interceptor logs the error to the browser console (`Error en petición: ...`) and re-rejects the promise so that individual call sites can handle errors with their own toast notifications or fallback logic.
+
+## Expected API endpoints
+
+The frontend calls the following endpoints on the configured base URL:
+
+<CardGroup cols={2}>
+  <Card title="POST /login" icon="arrow-right-to-bracket">
+    Authenticates the user and returns a JWT token containing the user's role (`Operador` or `Supervisor`).
+  </Card>
+  <Card title="POST /venta" icon="credit-card">
+    Registers a new sale. Receives `importe`, `nombre`, and AES-encrypted `tarjeta`, `expiracion`, and `cvv` fields.
+  </Card>
+  <Card title="GET /transacciones" icon="list">
+    Returns the full list of approved transactions for display in the Operator panel.
+  </Card>
+  <Card title="PATCH /cancelacion" icon="ban">
+    Applies a cancellation to a transaction. Receives a card number and financial reference.
+  </Card>
+  <Card title="PATCH /devolucion" icon="rotate-left">
+    Applies a refund to a transaction. Receives a card number and financial reference.
+  </Card>
+</CardGroup>
+
+## Changing the base URL
+
+The current `baseURL` points to a temporary Cloudflare tunnel used during development. For your own backend, update the value directly in `src/utils/api.js`, or — recommended for production — introduce an environment variable so the URL can be changed without modifying source code.
+
+<Steps>
+  <Step title="Add the variable to your .env file">
+    ```bash .env
+    VITE_API_BASE_URL=https://your-api-domain.com
+    ```
+  </Step>
+  <Step title="Update api.js to read from the environment">
+    Replace the hardcoded `baseURL` with a reference to the new variable:
+
+    ```javascript src/utils/api.js
+    const api = axios.create({
+      baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    ```
+
+    The fallback `'http://localhost:3000'` matches the default Mockoon port used during local development.
+  </Step>
+  <Step title="Rebuild or restart the dev server">
+    Vite reads environment variables at build time. After editing `.env`, restart the dev server (`npm run dev`) or rebuild (`npm run build`) for the change to take effect.
+  </Step>
+</Steps>
+
+<Warning>
+  The `VITE_` prefix embeds the variable value in the browser bundle. Do not store credentials or secret tokens in `VITE_API_BASE_URL` — it is a URL, not a secret.
+</Warning>
+
+## Local development with Mockoon
+
+During development, the project uses [Mockoon](https://mockoon.com) as a local mock API server. Several error messages in the application reference Mockoon explicitly:
+
+```
+Error de conexión, verifica que Mockoon esté corriendo en puerto 3000
+```
+
+This message appears when a request to `/venta`, `/transacciones`, `/cancelacion`, or `/devolucion` fails with a network error, indicating the mock server is not running.
+
+<Tip>
+  To set up Mockoon for local development:
+
+  1. Download and install [Mockoon Desktop](https://mockoon.com/download/) or install the CLI with `npm install -g @mockoon/cli`.
+  2. Create an environment that listens on port `3000`.
+  3. Add routes matching `POST /login`, `POST /venta`, `GET /transacciones`, `PATCH /cancelacion`, and `PATCH /devolucion`.
+  4. Start the environment before running `npm run dev`.
+
+  The Mockoon environment file can be shared with your team by committing it to the repository (it contains no secrets).
+</Tip>

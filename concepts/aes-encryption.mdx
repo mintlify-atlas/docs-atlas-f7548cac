@@ -1,0 +1,96 @@
+---
+title: "AES encryption"
+description: "How sensitive card data is encrypted before transmission in the Orion GoNet Platform."
+keywords: ["aes", "encryption", "cryptojs", "card data", "cvv", "security", "cifrado"]
+---
+
+Sensitive payment card fields — card number, CVV, and expiration date — are never transmitted in plaintext. Before the sale payload is posted to the backend, each of these values is encrypted using AES symmetric encryption via the CryptoJS library.
+
+## Why encryption at the client layer
+
+Even over HTTPS, encrypting sensitive fields before transmission adds a defense-in-depth layer. If a request is intercepted or logged at any intermediate point, the card fields remain opaque without knowledge of the secret key.
+
+## Implementation
+
+All encryption logic lives in `src/utils/cifrado.js`.
+
+```javascript src/utils/cifrado.js
+import CryptoJS from 'crypto-js'
+
+const SECRET_KEY = import.meta.env.VITE_AES_KEY || 'frontend_2026_contra'
+
+export function cifrarAES(valor) {
+  return CryptoJS.AES.encrypt(String(valor), SECRET_KEY).toString()
+}
+
+export function descifrarAES(valorCifrado) {
+  const bytes = CryptoJS.AES.decrypt(valorCifrado, SECRET_KEY)
+  return bytes.toString(CryptoJS.enc.Utf8)
+}
+```
+
+### Secret key configuration
+
+The key is read from the `VITE_AES_KEY` environment variable at build time.
+
+<Warning>
+  If `VITE_AES_KEY` is not set, the application falls back to the hardcoded key `'frontend_2026_contra'`. This fallback key is publicly visible in the source code and must never be used in a production environment. Always set `VITE_AES_KEY` in your deployment environment.
+</Warning>
+
+## What gets encrypted
+
+Three fields are encrypted before they leave the browser.
+
+| Field | Description | Sent as |
+|---|---|---|
+| `tarjeta` | 16-digit card number | AES ciphertext |
+| `expiracion` | Expiration date (MM/AA) | AES ciphertext |
+| `cvv` | 3-digit CVV | AES ciphertext |
+
+All other sale fields (`importe`, `nombre`) are sent in plaintext.
+
+## Sale payload construction
+
+The `Operador` component calls `cifrarAES()` on each sensitive field immediately before posting.
+
+```javascript Operador.vue
+const response = await api.post('/venta', {
+  importe:    venta.value.importe,
+  nombre:     venta.value.nombre,
+  tarjeta:    cifrarAES(tarjetaReal.value),
+  expiracion: cifrarAES(venta.value.expiracion),
+  cvv:        cifrarAES(venta.value.cvv)
+})
+```
+
+<Note>
+  `tarjetaReal.value` holds the raw card number typed by the user. The display input may mask the number (e.g. `**** **** **** 1234`), but the raw value is passed to `cifrarAES` before transmission.
+</Note>
+
+## Live encryption preview panel
+
+When all three card fields are fully filled in — card number (16 digits), CVV (3 digits), and expiration date in MM/AA format — the UI displays a "Cifrado AES activo" panel. This panel shows the plaintext value and its AES ciphertext side by side, allowing the operator to confirm that encryption is active before submitting.
+
+<Tip>
+  The preview panel is a development and transparency aid. The same `cifrarAES()` function used in the preview is the one used in the actual API call — there is no separate encryption path.
+</Tip>
+
+## Supervisor operations: no encryption
+
+Supervisors send the raw card number when applying cancellations (`PATCH /cancelacion`) and refunds (`PATCH /devolucion`). The `cifrarAES` utility is not used in the `Supervisor` component for these operations.
+
+<Note>
+  The asymmetry between Operador (encrypted) and Supervisor (plaintext) reflects a deliberate API contract with the backend. Ensure your backend expects the correct format for each endpoint.
+</Note>
+
+## Decryption
+
+The `descifrarAES` function is available for cases where the frontend needs to display a previously encrypted value.
+
+```javascript
+import { descifrarAES } from '../utils/cifrado'
+
+const plaintext = descifrarAES(encryptedValue)
+```
+
+Decryption requires the same `VITE_AES_KEY` used during encryption. If the keys do not match, `descifrarAES` returns an empty string.

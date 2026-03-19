@@ -1,80 +1,256 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Get from zero to processing your first transaction in under ten minutes."
+keywords: ["quickstart", "installation", "setup", "first transaction", "operator", "AES"]
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+Before you begin, make sure you have the following:
 
-### Step 1: Set up your local environment
+<Columns cols={3}>
+  <Card title="Node.js 18+" icon="node-js">
+    The app is built on Vite 6, which requires Node.js 18 or later. Run `node -v` to check your version.
+  </Card>
+  <Card title="npm" icon="box">
+    npm is bundled with Node.js. Run `npm -v` to confirm it is available.
+  </Card>
+  <Card title="Backend API" icon="server">
+    A running GoNet backend is required. The frontend will not function without a reachable API endpoint.
+  </Card>
+</Columns>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+---
 
-### Step 2: Deploy your changes
+## Installation
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/CRGdev11/front-orion.git
+    cd front-orion
+    ```
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    This installs all dependencies including Vue 3, Pinia, Axios, CryptoJS, and jwt-decode.
+  </Step>
 
-### Step 3: Go live
+  <Step title="Configure environment variables">
+    The repository ships a file called `keyy.env`. Rename it to `.env` before starting the dev server — Vite only reads `.env` at the project root.
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```bash
+    cp keyy.env .env
+    ```
+
+    Open `.env` and set your AES encryption key:
+
+    ```ini .env
+    VITE_AES_KEY=your_secret_key_here
+    ```
+
+    <Warning>
+      `VITE_AES_KEY` must match the key used by your backend to decrypt card data. If the keys differ, every transaction will fail decryption on the server side. Never commit `.env` to version control.
+    </Warning>
+
+    <Note>
+      If `VITE_AES_KEY` is not set, `src/utils/cifrado.js` falls back to the hardcoded string `frontend_2026_contra`. This fallback is for development only and must not be used in any environment that handles real card data.
+    </Note>
+  </Step>
+
+  <Step title="Point the API client at your backend">
+    Open `src/utils/api.js`. The `baseURL` is currently hardcoded to a Cloudflare tunnel URL that will not be reachable from your machine:
+
+    ```js src/utils/api.js {3}
+    const api = axios.create({
+      baseURL: 'https://pentium-kitty-comic-trembl.trycloudflare.com',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    ```
+
+    Replace the `baseURL` value with your own backend URL:
+
+    ```js src/utils/api.js {3}
+    const api = axios.create({
+      baseURL: 'http://localhost:8080',   // or your deployed API URL
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    ```
+
+    <Tip>
+      Move this to an environment variable to avoid editing source files per environment. Add `VITE_API_URL` to `.env` and reference it as `import.meta.env.VITE_API_URL` in `api.js`.
+    </Tip>
+  </Step>
+
+  <Step title="Start the development server">
+    ```bash
+    npm run dev
+    ```
+
+    Vite will print a local URL, typically `http://localhost:5173`. Open it in your browser. The router redirects `/` to `/login` automatically.
+  </Step>
+</Steps>
+
+---
+
+## Logging in
+
+The login screen accepts credentials for two roles. Use whichever matches what your backend has provisioned:
+
+<Columns cols={2}>
+  <Card title="Operator" icon="credit-card">
+    Processes new sales and queries approved transactions. Use this role to follow the rest of this quickstart.
+  </Card>
+  <Card title="Supervisor" icon="shield-check">
+    Applies cancellations and refunds with mandatory justification. Has access to the full operation history.
+  </Card>
+</Columns>
+
+<Steps>
+  <Step title="Enter your credentials">
+    On the `/login` page, type your username and password, then click **Iniciar Sesión**.
+
+    The form submits a `POST /login` request via Axios:
+
+    ```json Request body
+    {
+      "username": "your_username",
+      "password": "your_password"
+    }
+    ```
+  </Step>
+
+  <Step title="What happens on success">
+    The API returns a JWT. The app stores it in `localStorage` under the key `"token"`, then decodes it using `jwtDecode` from the `jwt-decode` library:
+
+    ```js
+    const decoded = jwtDecode(token)
+    authStore.rol = decoded.Role   // "Operador" or "Supervisor"
+    ```
+
+    The router then navigates to `/main`, where the `authStore.rol` value determines which component renders — `<Operador>` or `<Supervisor>`.
+  </Step>
+
+  <Step title="What happens on failure">
+    If the API returns an error (wrong credentials, unreachable server), the login page displays an inline error message below the form. No redirect occurs. Check your backend URL in `src/utils/api.js` if you see a network error.
+  </Step>
+</Steps>
+
+---
+
+## Processing your first sale (Operator role)
+
+Once logged in as an Operator, the `/main` view renders the `<Operador>` component with a sale form. Follow these steps to process a test transaction.
+
+<Steps>
+  <Step title="Fill in the transaction amount">
+    Enter a value greater than `0` in the **Importe** field. This is a required numeric field — the form will not submit with zero or negative values.
+
+    ```
+    Importe: 150.00
+    ```
+  </Step>
+
+  <Step title="Enter the cardholder name">
+    Type the name as it appears on the card in the **Nombre** field.
+
+    ```
+    Nombre: Juan Pérez
+    ```
+  </Step>
+
+  <Step title="Enter the card number">
+    Type the 16-digit card number in the **Número de Tarjeta** field. The input masks the digits as you type — this is intentional. The underlying value is captured correctly.
+
+    ```
+    Número de Tarjeta: 4111111111111111
+    ```
+
+    <Note>
+      The displayed value will show masked characters. The actual 16 digits are held in component state and will be encrypted before submission — they are never sent in plaintext.
+    </Note>
+  </Step>
+
+  <Step title="Enter the expiration date">
+    Type the expiration date in **MM/AA** format in the **Fecha de Expiración** field. The input auto-formats as you type — entering `1228` produces `12/28`.
+
+    ```
+    Fecha de Expiración: 12/28
+    ```
+  </Step>
+
+  <Step title="Enter the CVV">
+    Type the 3-digit security code in the **CVV** field. This is a password-type input, so the digits are hidden.
+
+    ```
+    CVV: 123
+    ```
+  </Step>
+
+  <Step title="Verify the AES encryption panel">
+    Once all three card fields (card number, expiration, CVV) are filled, the form displays a live **Cifrado AES activo** status panel. This confirms that `cifrarAES()` has processed the values and the payload is ready for encrypted transmission.
+
+    If this panel does not appear, check that all three card fields have valid values.
+  </Step>
+
+  <Step title="Submit the sale">
+    Click **Procesar Venta**. Before the request is sent, the app encrypts the card fields:
+
+    ```js src/utils/cifrado.js
+    import CryptoJS from 'crypto-js'
+
+    const SECRET_KEY = import.meta.env.VITE_AES_KEY || 'frontend_2026_contra'
+
+    export function cifrarAES(valor) {
+      return CryptoJS.AES.encrypt(String(valor), SECRET_KEY).toString()
+    }
+    ```
+
+    The encrypted values for card number, CVV, and expiration date replace the plaintext values in the request payload. The API receives only ciphertext for sensitive fields.
+
+    On approval, the app displays a toast notification containing the **approval number** and **financial reference** returned by the API.
+  </Step>
+</Steps>
+
+<Note>
+  The sale form performs client-side validation before encrypting or submitting. Fix any field highlighted in red before the submit button becomes active.
+</Note>
+
+---
+
+## Key environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `VITE_AES_KEY` | Yes (production) | AES encryption key used by `cifrarAES()` and `descifrarAES()`. Must match the backend decryption key. Falls back to `frontend_2026_contra` if unset. |
+
+<Warning>
+  The default fallback key `frontend_2026_contra` is publicly visible in the source code. Any environment processing real financial data must set `VITE_AES_KEY` explicitly in `.env`.
+</Warning>
+
+---
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+<Columns cols={2}>
+  <Card title="Architecture overview" icon="sitemap" href="/concepts/architecture">
+    Understand how Vue Router, Pinia stores, Axios interceptors, and the AES encryption layer fit together.
+  </Card>
+  <Card title="AES encryption" icon="lock" href="/concepts/aes-encryption">
+    Deep-dive into how `cifrarAES` and `descifrarAES` work, key management, and the CryptoJS configuration.
+  </Card>
+  <Card title="Operator panel" icon="credit-card" href="/features/operator-panel">
+    Full reference for the sale form, transaction query, field validation, and masked card display.
+  </Card>
+  <Card title="Roles and access control" icon="key" href="/concepts/roles">
+    How JWT role claims control routing, component rendering, and API access.
+  </Card>
+</Columns>

@@ -1,0 +1,64 @@
+---
+title: "Environment variables"
+description: "Configuring environment variables for the Orion GoNet Platform"
+keywords: ["environment variables", "vite", "aes key", "dotenv", "configuration", "VITE_AES_KEY"]
+---
+
+The Orion GoNet Platform uses Vite's built-in environment variable system. Variables prefixed with `VITE_` are injected into the browser bundle at build time and accessible via `import.meta.env`.
+
+## The `.env` file
+
+The project ships with a file named `keyy.env`. Before running the development server or building for production, rename or copy it to `.env` in the project root.
+
+```bash
+cp keyy.env .env
+```
+
+Your `.env` file should look like this:
+
+```bash .env
+# AES encryption key — must match the backend's decryption key
+VITE_AES_KEY=your-secret-key-here
+```
+
+<Warning>
+  **Never commit `.env` to version control.** It contains your AES key. Ensure `.env` is listed in `.gitignore`.
+
+  The fallback key `'frontend_2026_contra'` is hardcoded in `src/utils/cifrado.js` and is publicly visible in the source repository. It must never be used in a production environment.
+
+  Because the `VITE_` prefix embeds the variable value in the browser bundle, the AES key is visible to anyone who inspects the built JavaScript. AES encryption here provides obfuscation and defense-in-depth — it is not a substitute for transport-layer security or server-side access controls.
+</Warning>
+
+## Configured variables
+
+### `VITE_AES_KEY`
+
+The symmetric key used for AES encryption of card fields before they leave the browser.
+
+| Property | Value |
+|---|---|
+| Required | No — but strongly recommended for production |
+| Fallback | `'frontend_2026_contra'` |
+| Used in | `src/utils/cifrado.js` |
+
+The key is read in `cifrado.js` as follows:
+
+```javascript src/utils/cifrado.js
+const SECRET_KEY = import.meta.env.VITE_AES_KEY || 'frontend_2026_contra'
+```
+
+If `VITE_AES_KEY` is not set, the application falls back to the hardcoded default. The value you set here **must match the AES key configured on the backend** — a mismatch causes decryption to fail silently, returning an empty string.
+
+<Note>
+  `VITE_AES_KEY` is the only environment variable currently used by the application. All other configuration — including the API base URL — is hardcoded directly in source files.
+</Note>
+
+## Variables not yet externalised
+
+The following values are hardcoded in source and would need to be extracted into environment variables for a production deployment:
+
+| Value | Current location | Recommended variable |
+|---|---|---|
+| API base URL | `src/utils/api.js` | `VITE_API_BASE_URL` |
+
+See [API setup](/configuration/api-setup) for details on how to introduce `VITE_API_BASE_URL`.

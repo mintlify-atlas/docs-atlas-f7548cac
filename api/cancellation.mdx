@@ -1,0 +1,88 @@
+---
+title: 'Cancellation'
+description: 'PATCH /cancelacion — cancel a previously approved transaction.'
+---
+
+The `/cancelacion` endpoint marks an approved transaction as cancelled. It requires a `Supervisor` role JWT and a valid financial reference.
+
+**Required role: `Supervisor`**
+
+<Note>
+The `tarjeta` field for this endpoint is the plain 16-digit card number. It is **not** AES-encrypted, unlike the card number sent to `POST /venta`.
+</Note>
+
+## PATCH /cancelacion
+
+### Request body
+
+<ParamField body="referencia" type="string" required>
+  8-digit numeric financial reference identifying the transaction to cancel. The API rejects non-numeric values with `400: "Folio inválido, solo se permiten números"`.
+</ParamField>
+
+<ParamField body="tarjeta" type="string" required>
+  Plain 16-digit card number. Not encrypted.
+</ParamField>
+
+<ParamField body="justificacion" type="string" required>
+  Reason for the cancellation. Must be one of the following predefined values:
+
+  <Expandable title="Valid justificacion values">
+    - `Solicitud del cliente`
+    - `Error en captura de datos`
+    - `Cargo duplicado`
+    - `Transacción no reconocida`
+    - `Producto no disponible`
+    - `Fraude confirmado`
+    - `Error en el monto cobrado`
+    - `Autorización incorrecta`
+  </Expandable>
+</ParamField>
+
+### Example request
+
+```js
+const response = await api.patch('/cancelacion', { referencia, tarjeta, justificacion })
+```
+
+### Success response (200)
+
+<ResponseField name="numeroAprobacion" type="string" required>
+  Approval number for the cancellation.
+</ResponseField>
+
+<ResponseField name="referenciaFinanciera" type="string" required>
+  Financial reference of the original transaction.
+</ResponseField>
+
+<ResponseField name="tarjetaEnmascarada" type="string" required>
+  Masked card number for display and audit purposes.
+</ResponseField>
+
+<ResponseField name="estatus" type="string" required>
+  Transaction status after the operation. Value is `"Cancelado"`.
+</ResponseField>
+
+### Saving to local history
+
+After a successful cancellation, the frontend inserts a record into the localStorage history:
+
+```js
+historial.value = insertarRegistro({
+  tipo: 'Cancelación', justificacion, referencia,
+  tarjeta:              response.data.tarjetaEnmascarada,
+  numeroAprobacion:     response.data.numeroAprobacion,
+  referenciaFinanciera: response.data.referenciaFinanciera,
+  estatus:              response.data.estatus
+})
+```
+
+### Error response
+
+| Status | Description |
+|--------|-------------|
+| 400 | Bad request — common cause is a non-numeric `referencia`. Response body contains `mensaje`. |
+| 401 | Invalid or missing JWT. |
+
+<Tip>
+For refunds instead of cancellations, see [Refund](/api/refund). Both endpoints share the same request structure but differ in their valid `justificacion` values and the returned `estatus`.
+</Tip>

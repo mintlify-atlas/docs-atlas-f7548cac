@@ -1,0 +1,145 @@
+---
+title: "Authentication"
+description: "JWT-based authentication flow for the Orion GoNet Platform."
+keywords: ["authentication", "jwt", "login", "pinia", "token", "localStorage"]
+---
+
+Orion GoNet uses JWT (JSON Web Token) authentication. The token is issued by the backend on a successful login, stored in `localStorage`, and attached to every subsequent API request via an Axios interceptor.
+
+## Login flow
+
+<Steps>
+  <Step title="Submit credentials">
+    The Login component calls `authStore.login(usuario, password)`, which posts to `POST /login`.
+  </Step>
+  <Step title="Store the token">
+    On a `200` response, the raw JWT string is saved to `this.token` (Pinia state) and to `localStorage` under the key `"token"`.
+  </Step>
+  <Step title="Decode the role">
+    `jwtDecode(this.token)` extracts the payload. The `Role` claim (`decoded.Role`) is written to `this.rol`.
+  </Step>
+  <Step title="Navigate to main">
+    The Login component reads the `true` return value and uses `router.push('/main')` to redirect the user.
+  </Step>
+</Steps>
+
+<Note>
+  A `401` response from the backend is caught and logged. The action returns `false` so the Login component can display an error message without throwing.
+</Note>
+
+## Auth store
+
+The entire authentication state lives in `src/stores/auth.js`.
+
+```javascript src/stores/auth.js
+import { defineStore } from 'pinia'
+import { jwtDecode } from 'jwt-decode'
+import api from '../utils/api'
+
+export const useAuthStore = defineStore('auth', {
+  state: () => ({
+    token: localStorage.getItem('token') || null,
+    rol: null,
+  }),
+
+  actions: {
+    async login(usuario, password) {
+      try {
+        const response = await api.post('/login', { usuario, password })
+        this.token = response.data.token
+        localStorage.setItem('token', this.token)
+        const decoded = jwtDecode(this.token)
+        this.rol = decoded.Role
+        return true
+      } catch (error) {
+        if (error.response && error.response.status === 401) {
+          console.log('Credenciales inválidas')
+        }
+        return false
+      }
+    },
+
+    logout() {
+      this.token = null
+      this.rol = null
+      localStorage.removeItem('token')
+    },
+
+    cargarRolDesdeToken() {
+      if (this.token) {
+        try {
+          const decoded = jwtDecode(this.token)
+          this.rol = decoded.Role
+        } catch (error) {
+          this.logout()
+        }
+      }
+    }
+  },
+
+  getters: {
+    isAuthenticated: (state) => !!state.token,
+  }
+})
+```
+
+### State
+
+| Property | Type | Initial value | Description |
+|---|---|---|---|
+| `token` | `string \| null` | Value from `localStorage['token']` or `null` | Raw JWT string |
+| `rol` | `string \| null` | `null` | Decoded role (`'Operador'` or `'Supervisor'`) |
+
+### Actions
+
+<AccordionGroup>
+  <Accordion title="login(usuario, password)">
+    Posts credentials to `/login`. On success, persists the token and decodes the role. Returns `true` on success, `false` on failure.
+  </Accordion>
+  <Accordion title="logout()">
+    Clears `token` and `rol` from Pinia state and removes the token from `localStorage`. Called explicitly by the user and automatically when `cargarRolDesdeToken` detects an invalid token.
+  </Accordion>
+  <Accordion title="cargarRolDesdeToken()">
+    Called once at app startup in `main.js`. Reads the stored token from Pinia state (which is seeded from `localStorage`) and decodes the role. If `jwtDecode` throws — for example, because the token is malformed or expired — `logout()` is called to clear all stale state.
+  </Accordion>
+</AccordionGroup>
+
+### Getters
+
+| Getter | Returns | Description |
+|---|---|---|
+| `isAuthenticated` | `boolean` | `true` when `token` is a non-empty string |
+
+<Note>
+  `isAuthenticated` is a simple truthiness check on the token string. Token expiry is not validated client-side; the backend is responsible for rejecting expired tokens.
+</Note>
+
+## Token persistence
+
+The Pinia state initializes `token` directly from `localStorage.getItem('token')`. This means a page reload does not log the user out — the token is available synchronously before any component renders.
+
+`cargarRolDesdeToken()` then restores the `rol` value (which is not persisted separately) by decoding the token on every app start.
+
+## Axios request interceptor
+
+Every HTTP request made through the shared Axios instance in `src/utils/api.js` automatically includes the token.
+
+```javascript src/utils/api.js
+api.interceptors.request.use((config) => {
+  const authStore = useAuthStore()
+  if (authStore.token) {
+    config.headers.Authorization = `Bearer ${authStore.token}`
+  }
+  return config
+})
+```
+
+<Tip>
+  Because the interceptor reads `authStore.token` at request time, it always uses the most current token. There is no need to manually update request headers after a login.
+</Tip>
+
+## Invalid or expired token handling
+
+If the token stored in `localStorage` cannot be decoded by `jwtDecode` (malformed, tampered, or using an incompatible format), `cargarRolDesdeToken()` catches the exception and calls `logout()`.
+
+This resets `token` and `rol` to `null` and removes the entry from `localStorage`, leaving the app in a clean unauthenticated state. The router guard then redirects the user to `/login` on the next navigation.

@@ -1,0 +1,74 @@
+---
+title: 'Authentication endpoint'
+description: 'POST /login — authenticate and receive a JWT token.'
+---
+
+The `/login` endpoint is the only endpoint that does not require an existing JWT. It accepts user credentials and returns a signed JWT token used for all subsequent requests.
+
+## POST /login
+
+**No authentication required.**
+
+### Request body
+
+<ParamField body="usuario" type="string" required>
+  The username for the account.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The account password.
+</ParamField>
+
+### Example request
+
+From the auth store:
+
+```js
+const response = await api.post('/login', { usuario, password })
+```
+
+### Success response
+
+Returns HTTP `200` with a JSON body containing the JWT.
+
+<ResponseField name="token" type="string" required>
+  Signed JWT string. Decode this token to read the `Role` claim.
+</ResponseField>
+
+### Processing the token
+
+After receiving the token, the auth store decodes it to extract the user role:
+
+```js
+this.token = response.data.token
+localStorage.setItem('token', this.token)
+const decoded = jwtDecode(this.token)
+this.rol = decoded.Role  // "Operador" or "Supervisor"
+```
+
+The token is stored in `localStorage` and automatically attached to every subsequent API request by the axios interceptor.
+
+### JWT payload
+
+The decoded JWT contains at minimum:
+
+<ResponseField name="Role" type="string" required>
+  The role assigned to the authenticated user. One of `Operador` or `Supervisor`. Controls which endpoints the user may call.
+</ResponseField>
+
+### Error response
+
+| Status | Description |
+|--------|-------------|
+| 401 | Invalid credentials — the username or password is incorrect. |
+
+<Note>
+A `401` from `/login` means the credentials themselves are wrong. A `401` on any other endpoint means the JWT is missing, expired, or invalid.
+</Note>
+
+## Next steps
+
+After authenticating, use the token to call the role-appropriate endpoints:
+
+- [Transactions](/api/transactions) — available to the `Operador` role
+- [Cancellation](/api/cancellation) and [Refund](/api/refund) — available to the `Supervisor` role

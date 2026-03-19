@@ -1,0 +1,89 @@
+---
+title: 'Refund'
+description: 'PATCH /devolucion — refund a previously approved transaction.'
+---
+
+The `/devolucion` endpoint processes a refund for an approved transaction. It requires a `Supervisor` role JWT and follows the same request structure as [`PATCH /cancelacion`](/api/cancellation), with different valid `justificacion` values.
+
+**Required role: `Supervisor`**
+
+<Note>
+The `tarjeta` field is the plain 16-digit card number. It is **not** AES-encrypted, unlike the card number sent to `POST /venta`.
+</Note>
+
+## PATCH /devolucion
+
+### Request body
+
+<ParamField body="referencia" type="string" required>
+  8-digit numeric financial reference identifying the transaction to refund.
+</ParamField>
+
+<ParamField body="tarjeta" type="string" required>
+  Plain 16-digit card number. Not encrypted.
+</ParamField>
+
+<ParamField body="justificacion" type="string" required>
+  Reason for the refund. Must be one of the following predefined values:
+
+  <Expandable title="Valid justificacion values">
+    - `Producto defectuoso o dañado`
+    - `Producto no recibido`
+    - `Producto incorrecto enviado`
+    - `Insatisfacción del cliente`
+    - `Cobro incorrecto`
+    - `Servicio no prestado`
+    - `Devolución parcial acordada`
+    - `Contracargo bancario`
+    - `Garantía del producto`
+  </Expandable>
+</ParamField>
+
+### Example request
+
+```js
+const response = await api.patch('/devolucion', { referencia, tarjeta, justificacion })
+```
+
+### Success response (200)
+
+<ResponseField name="numeroAprobacion" type="string" required>
+  Approval number for the refund.
+</ResponseField>
+
+<ResponseField name="referenciaFinanciera" type="string" required>
+  Financial reference of the original transaction.
+</ResponseField>
+
+<ResponseField name="tarjetaEnmascarada" type="string" required>
+  Masked card number for display and audit purposes.
+</ResponseField>
+
+<ResponseField name="estatus" type="string" required>
+  Transaction status after the operation. Value is `"Devuelto"`.
+</ResponseField>
+
+### Saving to local history
+
+After a successful refund, the frontend inserts a record into the localStorage history:
+
+```js
+historial.value = insertarRegistro({
+  tipo: 'Devolución', justificacion, referencia,
+  tarjeta:              response.data.tarjetaEnmascarada,
+  numeroAprobacion:     response.data.numeroAprobacion,
+  referenciaFinanciera: response.data.referenciaFinanciera,
+  estatus:              response.data.estatus
+})
+```
+
+### Error response
+
+| Status | Description |
+|--------|-------------|
+| 400 | Bad request — response body contains `mensaje` with details. |
+| 401 | Invalid or missing JWT. |
+
+<Tip>
+For cancellations instead of refunds, see [Cancellation](/api/cancellation). Both endpoints share the same request structure but use different `justificacion` values and return different `estatus` values (`"Cancelado"` vs `"Devuelto"`).
+</Tip>

@@ -1,0 +1,185 @@
+---
+title: "Operator panel"
+description: "Processing sales and querying transactions as an Operator"
+---
+
+The Operator panel (`Operador.vue`) provides two core capabilities: registering new sales and querying the transaction list. Both panels are available exclusively to users with the `operador` role.
+
+<Columns cols={2}>
+  <Card title="Register sale" icon="credit-card">
+    Submit encrypted card transactions to the `/venta` endpoint.
+  </Card>
+  <Card title="Query transactions" icon="list">
+    Load and display the full transaction log from `/transacciones`.
+  </Card>
+</Columns>
+
+## Register sale (Registrar Venta)
+
+The sale form collects cardholder and payment details, validates them client-side, encrypts sensitive fields with AES before transmission, and displays the approval result on success.
+
+### Form fields
+
+<AccordionGroup>
+  <Accordion title="Importe (amount)">
+    - **Type:** number  
+    - **Step:** `0.01`  
+    - **Required:** yes  
+    - Validated to be greater than `0`.
+  </Accordion>
+
+  <Accordion title="Nombre del titular (cardholder name)">
+    - **Type:** text  
+    - **Required:** yes  
+    - Validated with `.trim()` — whitespace-only values are rejected.
+  </Accordion>
+
+  <Accordion title="Número de Tarjeta" defaultOpen={true}>
+    - **Type:** text (masked)  
+    - **Required:** yes — must be exactly 16 digits  
+    - **Masked display:** when the field loses focus, the value is rendered as the first 4 digits + `****` + last 4 digits (e.g., `4111 **** **** 1111`).
+    - **Plain display:** when focused, digits are shown with spaces for readability.
+    - **Live counter:** a `x/16` digit counter updates as the user types.
+    - Non-digit characters are stripped on input.
+  </Accordion>
+
+  <Accordion title="Fecha de Expiración">
+    - **Format:** `MM/AA`  
+    - **Required:** yes — minimum length 5 characters  
+    - Auto-formatting inserts `/` automatically after the user types the second digit.
+  </Accordion>
+
+  <Accordion title="CVV">
+    - **Type:** password (characters hidden)  
+    - **Required:** yes — must be exactly 3 digits
+  </Accordion>
+</AccordionGroup>
+
+### Validation logic
+
+All fields are validated in the `validar()` function before the API call is made. Each failure shows a toast notification and halts submission.
+
+```javascript Operador.vue — validar()
+function validar() {
+  if (!tarjetaReal.value || tarjetaReal.value.length !== 16) {
+    toast.error('❌ El número de tarjeta debe tener 16 dígitos', { timeout: 4000 })
+    return false
+  }
+  if (!venta.value.expiracion || venta.value.expiracion.length < 5) {
+    toast.error('❌ Ingresa una fecha de expiración válida (MM/AA)', { timeout: 4000 })
+    return false
+  }
+  if (!venta.value.cvv || venta.value.cvv.length < 3) {
+    toast.error('❌ El CVV debe tener 3 dígitos', { timeout: 4000 })
+    return false
+  }
+  if (!venta.value.importe || venta.value.importe <= 0) {
+    toast.error('❌ El importe debe ser mayor a 0', { timeout: 4000 })
+    return false
+  }
+  if (!venta.value.nombre.trim()) {
+    toast.error('❌ El nombre es requerido', { timeout: 4000 })
+    return false
+  }
+  return true
+}
+```
+
+### AES encryption before sending
+
+The three sensitive fields — card number, expiration date, and CVV — are encrypted with `cifrarAES()` before being included in the request body. The `importe` and `nombre` fields are sent in plaintext.
+
+```javascript Operador.vue — POST /venta
+const response = await api.post('/venta', {
+  importe:    venta.value.importe,
+  nombre:     venta.value.nombre,
+  tarjeta:    cifrarAES(tarjetaReal.value),
+  expiracion: cifrarAES(venta.value.expiracion),
+  cvv:        cifrarAES(venta.value.cvv)
+})
+```
+
+<Note>
+  `cifrarAES()` is a shared utility. The server decrypts these fields using the same AES key. Never send raw card data.
+</Note>
+
+### Success response
+
+On HTTP 200, the panel displays the following fields returned by the API:
+
+| Field | Description |
+|---|---|
+| `numeroAprobacion` | Authorization number issued by the processor |
+| `referenciaFinanciera` | 8-digit financial reference for the transaction |
+| `tarjetaEnmascarada` | Masked card number as stored by the server |
+
+### Error handling
+
+<Tabs>
+  <Tab title="HTTP 400">
+    The error message from `error.response.data?.mensaje` is displayed in a toast. If the field is absent, the fallback message `'Datos inválidos'` is shown.
+  </Tab>
+  <Tab title="Other errors">
+    A generic connectivity message is shown:
+
+    ```
+    Error de conexión, verifica que Mockoon esté corriendo en puerto 3000
+    ```
+
+    This typically means the mock server is not running.
+  </Tab>
+</Tabs>
+
+---
+
+## Query transactions (Consultar Transacciones)
+
+<Steps>
+  <Step title="Click Cargar Transacciones">
+    A single button triggers a `GET /transacciones` request. No parameters are required.
+  </Step>
+  <Step title="View the transaction table">
+    On success, the table is populated with the following columns:
+
+    | Column | Field |
+    |---|---|
+    | ID | `id` |
+    | Importe | `importe` |
+    | Nombre | `nombre` |
+    | Tarjeta | `tarjeta` (masked) |
+    | Fecha | `fecha` |
+    | Aprobación | `numeroAprobacion` |
+    | Referencia | `referenciaFinanciera` |
+
+    A success toast confirms the load: `✅ [200 OK] {n} transacciones cargadas`.
+  </Step>
+</Steps>
+
+<Info>
+  When no transactions have been loaded yet, the table shows the empty state message: **"No hay transacciones cargadas"**.
+</Info>
+
+---
+
+## Live AES preview panel
+
+The AES preview panel appears automatically — no button required — once all three of the following conditions are met:
+
+- Card number has **16 digits**
+- CVV has **3 digits**
+- Expiration date has **5 characters** (e.g., `12/26`)
+
+When visible, it renders both the plaintext and AES-encrypted values side by side:
+
+| Label | Content |
+|---|---|
+| Tarjeta en claro | Raw 16-digit card number |
+| Tarjeta cifrada | `cifrarAES(tarjeta)` output |
+| CVV en claro | Raw 3-digit CVV |
+| CVV cifrado | `cifrarAES(cvv)` output |
+| Expiración en claro | Raw `MM/AA` string |
+| Expiración cifrada | `cifrarAES(expiracion)` output |
+
+<Tip>
+  Use this panel during development and QA to verify that the AES encryption utility is producing ciphertext before a real submission is attempted.
+</Tip>

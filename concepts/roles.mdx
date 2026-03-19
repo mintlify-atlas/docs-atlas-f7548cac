@@ -1,0 +1,86 @@
+---
+title: "Roles & access control"
+description: "How Operator and Supervisor roles work in the Orion GoNet Platform."
+keywords: ["roles", "access control", "operador", "supervisor", "rbac", "jwt"]
+---
+
+Orion GoNet implements role-based access control (RBAC) using claims embedded in the JWT. There are two roles: **Operador** and **Supervisor**. Each role unlocks a distinct UI panel and a different set of API operations.
+
+## How roles are assigned
+
+The `Role` claim is set by the backend when the JWT is issued. After a successful login, the frontend decodes the token with `jwtDecode` and reads `decoded.Role`.
+
+```javascript
+const decoded = jwtDecode(this.token)
+this.rol = decoded.Role // 'Operador' or 'Supervisor'
+```
+
+The decoded value is stored in the Pinia auth store (`authStore.rol`) and is available throughout the application. No role management happens on the frontend — the role is determined entirely by the backend.
+
+## Conditional rendering in Main.vue
+
+`Main.vue` uses `authStore.rol` to decide which panel to render.
+
+```html Main.vue
+<Operador   v-if="authStore.rol === 'Operador'"       :tema="tema" />
+<Supervisor v-else-if="authStore.rol === 'Supervisor'" :tema="tema" />
+<div v-else class="cargando">
+  <div class="cargando-spinner"></div>
+  <p>Cargando...</p>
+</div>
+```
+
+<Note>
+  The loading state (`v-else`) is displayed while `rol` is still `null` — for example, during the brief window between app mount and the completion of `cargarRolDesdeToken()`.
+</Note>
+
+## Role capabilities
+
+<Columns cols={2}>
+  <Card title="Operador" icon="user" color="#60a5fa">
+    - Process sales via `POST /venta`
+    - Query transaction list via `GET /transacciones`
+    - View live AES encryption panel for card data
+  </Card>
+  <Card title="Supervisor" icon="user-tie" color="#f87171">
+    - Apply cancellations via `PATCH /cancelacion`
+    - Apply refunds via `PATCH /devolucion`
+    - View and export the operation history from `localStorage`
+  </Card>
+</Columns>
+
+## Comparison table
+
+| Capability | Operador | Supervisor |
+|---|:---:|:---:|
+| `POST /venta` — process a sale | Yes | No |
+| `GET /transacciones` — query transactions | Yes | No |
+| `PATCH /cancelacion` — cancel a transaction | No | Yes |
+| `PATCH /devolucion` — issue a refund | No | Yes |
+| View operation history | No | Yes |
+| Export operation history | No | Yes |
+| AES-encrypted card data on sale | Yes | — |
+| Raw card number on cancellation/refund | — | Yes |
+
+## UI differences
+
+Each role has a distinct badge color displayed in the navbar and on the panel header.
+
+<Columns cols={2}>
+  <Card title="Operador badge" icon="circle" color="#60a5fa">
+    Blue — hex `#60a5fa`
+  </Card>
+  <Card title="Supervisor badge" icon="circle" color="#f87171">
+    Red — hex `#f87171`
+  </Card>
+</Columns>
+
+The role label and badge appear in the navbar so that the current user always knows which role they are operating under.
+
+## Security boundary
+
+The frontend enforces role separation only through conditional rendering — it does not show UI elements that are outside the user's role. The backend is the authoritative enforcement point and must validate the JWT `Role` claim on every protected endpoint.
+
+<Warning>
+  Hiding UI elements is not a security control. Always validate the role on the server side. A user with a tampered token who calls a restricted endpoint directly will be rejected by the backend, not the frontend.
+</Warning>

@@ -1,0 +1,131 @@
+---
+title: 'Transactions'
+description: 'POST /venta and GET /transacciones — process sales and retrieve approved transactions.'
+---
+
+Both transaction endpoints require an `Operador` role JWT. Card-sensitive fields must be AES-encrypted before sending.
+
+<Warning>
+The `tarjeta`, `expiracion`, and `cvv` fields in `POST /venta` must be encrypted with AES using `cifrarAES()` before they are included in the request body. Sending plaintext card data will be rejected by the API and violates PCI handling requirements.
+</Warning>
+
+---
+
+## POST /venta
+
+Process a new sale transaction.
+
+**Required role: `Operador`**
+
+### Request body
+
+<ParamField body="importe" type="number" required>
+  Transaction amount. Must be greater than `0`.
+</ParamField>
+
+<ParamField body="nombre" type="string" required>
+  Cardholder name as it appears on the card.
+</ParamField>
+
+<ParamField body="tarjeta" type="string" required>
+  AES-encrypted 16-digit card number. Encrypt the raw value with `cifrarAES()` before sending.
+</ParamField>
+
+<ParamField body="expiracion" type="string" required>
+  AES-encrypted card expiration date in `MM/AA` format. Encrypt with `cifrarAES()` before sending.
+</ParamField>
+
+<ParamField body="cvv" type="string" required>
+  AES-encrypted 3-digit CVV. Encrypt with `cifrarAES()` before sending.
+</ParamField>
+
+### Example request
+
+```js
+await api.post('/venta', {
+  importe:    venta.value.importe,
+  nombre:     venta.value.nombre,
+  tarjeta:    cifrarAES(tarjetaReal.value),
+  expiracion: cifrarAES(venta.value.expiracion),
+  cvv:        cifrarAES(venta.value.cvv)
+})
+```
+
+### Success response (200)
+
+<ResponseField name="numeroAprobacion" type="string" required>
+  Approval number assigned to the transaction.
+</ResponseField>
+
+<ResponseField name="referenciaFinanciera" type="string" required>
+  8-digit numeric financial reference. Used as the identifier for cancellation and refund requests.
+</ResponseField>
+
+<ResponseField name="tarjetaEnmascarada" type="string" required>
+  Masked card number for display purposes (e.g., `****1234`).
+</ResponseField>
+
+<ResponseField name="mensaje" type="string" required>
+  Human-readable confirmation message from the API.
+</ResponseField>
+
+### Error response
+
+| Status | Description |
+|--------|-------------|
+| 400 | Bad request — response body contains `mensaje` with details. |
+| 401 | Invalid or missing JWT. |
+
+---
+
+## GET /transacciones
+
+Retrieve the list of all approved transactions.
+
+**Required role: `Operador`**
+
+No request body.
+
+### Response
+
+Returns an array of transaction objects. On success, the frontend shows a toast:
+
+```text
+✅ [200 OK] {n} transacciones cargadas
+```
+
+Each item in the array has the following shape:
+
+<ResponseField name="id" type="string" required>
+  Unique transaction identifier.
+</ResponseField>
+
+<ResponseField name="importe" type="number" required>
+  Transaction amount.
+</ResponseField>
+
+<ResponseField name="nombre" type="string" required>
+  Cardholder name.
+</ResponseField>
+
+<ResponseField name="tarjeta" type="string" required>
+  Masked card number.
+</ResponseField>
+
+<ResponseField name="fecha" type="string" required>
+  Transaction date and time.
+</ResponseField>
+
+<ResponseField name="aprobacion" type="string" required>
+  Approval number for the transaction.
+</ResponseField>
+
+<ResponseField name="referencia" type="string" required>
+  Financial reference number.
+</ResponseField>
+
+### Error response
+
+| Status | Description |
+|--------|-------------|
+| 401 | Invalid or missing JWT. |

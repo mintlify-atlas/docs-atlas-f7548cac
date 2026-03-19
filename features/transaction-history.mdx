@@ -1,0 +1,166 @@
+---
+title: "Transaction history"
+description: "Viewing, filtering, and exporting the operation log"
+---
+
+Every cancellation and refund submitted through the Supervisor panel is automatically saved to `localStorage`. The history panel provides a searchable, filterable table of all recorded operations, with options to export to Excel or JSON and to clear the log entirely.
+
+<Info>
+  The history is stored locally in the browser. It persists across page reloads but is isolated to the current browser profile. Clearing browser storage will erase all records.
+</Info>
+
+---
+
+## Storage
+
+Records are persisted under the localStorage key `'front-orion-gonet:historial'` as a JSON array. All reads and writes go through the utility functions in `src/utils/historial.js`.
+
+### Record structure
+
+Each entry is created by `insertarRegistro()` and follows this shape:
+
+```javascript src/utils/historial.js — record structure
+const nuevo = {
+  id:                   generarId(),           // ORN-{timestamp}-{random}
+  fecha:                new Date().toLocaleString('es-MX'),
+  tipo:                 registro.tipo,          // 'Cancelación' or 'Devolución'
+  justificacion:        registro.justificacion,
+  referencia:           registro.referencia,
+  tarjeta:              registro.tarjeta,       // masked value from API response
+  numeroAprobacion:     registro.numeroAprobacion,
+  referenciaFinanciera: registro.referenciaFinanciera,
+  estatus:              registro.estatus
+}
+```
+
+<Note>
+  `generarId()` produces an ID in the format `ORN-{timestamp}-{random}`, ensuring uniqueness across sessions.
+</Note>
+
+---
+
+## History table
+
+The table renders one row per record with the following columns:
+
+| Column | Field | Notes |
+|---|---|---|
+| ID | `id` | `ORN-…` format |
+| Fecha | `fecha` | Locale-formatted (`es-MX`) |
+| Tipo | `tipo` | Rendered as a badge |
+| Aprobación | `numeroAprobacion` | — |
+| Ref. Financiera | `referenciaFinanciera` | — |
+| Tarjeta | `tarjeta` | Masked value |
+| Justificación | `justificacion` | — |
+| Estatus | `estatus` | Rendered as a badge |
+
+---
+
+## Filtering
+
+Two independent filters can be combined:
+
+<Columns cols={2}>
+  <Card title="Filter by type" icon="filter">
+    A toggle or dropdown with three options: **All**, **Cancelaciones**, **Devoluciones**. Filters the `tipo` field.
+  </Card>
+  <Card title="Free-text search" icon="magnifying-glass">
+    Searches across `referenciaFinanciera`, `tarjeta`, and `id` fields simultaneously.
+  </Card>
+</Columns>
+
+---
+
+## Export to Excel
+
+Clicking **Exportar Excel** downloads a `.xlsx` file named `historial-orion-{timestamp}.xlsx`. The export is powered by [SheetJS](https://sheetjs.com/) (`xlsx` library).
+
+```javascript Supervisor.vue — descargarExcel()
+function descargarExcel() {
+  const datos = historial.value.map(r => ({
+    'ID':                  r.id,
+    'Fecha':               r.fecha,
+    'Tipo':                r.tipo,
+    'Núm. Aprobación':     r.numeroAprobacion,
+    'Ref. Financiera':     r.referenciaFinanciera,
+    'Tarjeta':             r.tarjeta,
+    'Justificación':       r.justificacion,
+    'Estatus':             r.estatus
+  }))
+
+  const hoja  = XLSX.utils.json_to_sheet(datos)
+  const libro = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(libro, hoja, 'Historial')
+  XLSX.writeFile(libro, `historial-orion-${Date.now()}.xlsx`)
+}
+```
+
+Column widths for all 8 fields are predefined in the sheet configuration to ensure readable output without manual resizing.
+
+<Warning>
+  The **Exportar Excel** button is disabled when the history is empty. Attempting to call `descargarExcel()` with zero records produces an empty file.
+</Warning>
+
+---
+
+## Export to JSON
+
+The `exportarJSON()` utility function in `src/utils/historial.js` provides a secondary export path that downloads the raw history array as a `.json` file. This is independent of the SheetJS Excel export.
+
+```javascript src/utils/historial.js — exportarJSON()
+export function exportarJSON() { ... }
+```
+
+---
+
+## Clear history
+
+<Steps>
+  <Step title="Click Limpiar">
+    The **Limpiar** button is only enabled when at least one record exists.
+  </Step>
+  <Step title="Confirm the dialog">
+    A confirmation dialog is shown before any data is deleted.
+  </Step>
+  <Step title="History is removed">
+    On confirmation, `limpiarHistorial()` is called, which removes the localStorage key entirely.
+
+    ```javascript src/utils/historial.js — limpiarHistorial()
+    export function limpiarHistorial() {
+      localStorage.removeItem(CLAVE)
+    }
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Clearing the history is permanent. There is no undo — once the localStorage key is removed, all records are lost. Export to Excel or JSON before clearing if you need a backup.
+</Warning>
+
+---
+
+## Utility functions reference
+
+All localStorage interactions are encapsulated in `src/utils/historial.js`:
+
+```javascript src/utils/historial.js — public API
+export function obtenerHistorial() {
+  try {
+    const data = localStorage.getItem(CLAVE)
+    return data ? JSON.parse(data) : []
+  } catch { return [] }
+}
+
+export function insertarRegistro(registro) { ... }
+export function exportarJSON() { ... }
+export function limpiarHistorial() {
+  localStorage.removeItem(CLAVE)
+}
+```
+
+| Function | Purpose |
+|---|---|
+| `obtenerHistorial()` | Reads and parses the stored array; returns `[]` on error or if empty |
+| `insertarRegistro(registro)` | Appends a new record and persists the updated array |
+| `exportarJSON()` | Downloads the full history as a `.json` file |
+| `limpiarHistorial()` | Removes the `'front-orion-gonet:historial'` key from localStorage |

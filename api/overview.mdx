@@ -1,0 +1,107 @@
+---
+title: 'API overview'
+description: 'Base URL, authentication, error handling, and common patterns for the Orion GoNet Platform API.'
+---
+
+The Orion GoNet Platform exposes a REST API over HTTPS. All request and response bodies use JSON. This page covers the base URL, authentication scheme, role-based access rules, and error handling patterns shared across all endpoints.
+
+## Base URL
+
+The API base URL is currently set in `src/utils/api.js`:
+
+```text
+https://pentium-kitty-comic-trembl.trycloudflare.com
+```
+
+<Warning>
+This URL is a Cloudflare tunnel used for development. Replace it with your production API URL before deploying to any environment outside of local development.
+</Warning>
+
+## Request format
+
+Every request must include the following header:
+
+```http
+Content-Type: application/json
+```
+
+All endpoints except `POST /login` also require a valid JWT in the `Authorization` header:
+
+```http
+Authorization: Bearer <token>
+```
+
+The axios interceptor in `src/utils/api.js` injects this header automatically from the token stored in `localStorage`.
+
+## Authentication and roles
+
+After a successful login, the API returns a JWT. The token payload contains a `Role` claim with one of two values:
+
+| Role | Value |
+|------|-------|
+| Operator | `Operador` |
+| Supervisor | `Supervisor` |
+
+Endpoint access is gated by role:
+
+| Method | Path | Role required | Description |
+|--------|------|---------------|-------------|
+| POST | /login | None | Authenticate and get JWT token |
+| POST | /venta | Operador | Process a new sale |
+| GET | /transacciones | Operador | Get list of approved transactions |
+| PATCH | /cancelacion | Supervisor | Cancel a transaction |
+| PATCH | /devolucion | Supervisor | Refund a transaction |
+
+<Tip>
+The frontend router guards and UI components enforce role visibility, but the API itself enforces role authorization on every request. Always send a valid token with the correct role.
+</Tip>
+
+## Typical authenticated request
+
+Below is an example of a complete authenticated request to `POST /venta`:
+
+```http
+POST /venta HTTP/1.1
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "importe": 150.00,
+  "nombre": "Juan Pérez",
+  "tarjeta": "U2FsdGVkX1...",
+  "expiracion": "U2FsdGVkX1...",
+  "cvv": "U2FsdGVkX1..."
+}
+```
+
+Note that `tarjeta`, `expiracion`, and `cvv` are AES-encrypted before being sent. See [Transactions](/api/transactions) for details.
+
+## Error handling
+
+The API returns standard HTTP status codes. Error responses include a JSON body with a `mensaje` field describing the problem.
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Bad request — response body contains `mensaje` with details |
+| 401 | Unauthorized — invalid or missing credentials |
+
+The frontend displays errors as a toast notification that includes the HTTP status code when available:
+
+```text
+🚨 [Error 400] Folio inválido, solo se permiten números
+```
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/api/auth">
+    POST /login — authenticate and receive a JWT token.
+  </Card>
+  <Card title="Transactions" icon="arrow-right-arrow-left" href="/api/transactions">
+    POST /venta and GET /transacciones for Operador role.
+  </Card>
+  <Card title="Cancellation" icon="ban" href="/api/cancellation">
+    PATCH /cancelacion — cancel a transaction (Supervisor only).
+  </Card>
+  <Card title="Refund" icon="rotate-left" href="/api/refund">
+    PATCH /devolucion — refund a transaction (Supervisor only).
+  </Card>
+</CardGroup>

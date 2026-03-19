@@ -1,0 +1,170 @@
+---
+title: "Supervisor panel"
+description: "Applying cancellations and refunds as a Supervisor"
+---
+
+The Supervisor panel (`Supervisor.vue`) extends the Operator capabilities with two privileged operations: cancelling a transaction and issuing a refund. Both operations require a financial reference, the original card number, and a mandatory justification.
+
+<Warning>
+  These operations are irreversible on the mock server. Each action also writes a permanent record to the transaction history stored in `localStorage`.
+</Warning>
+
+<Columns cols={2}>
+  <Card title="Cancellation" icon="ban">
+    Apply a cancellation to an existing transaction via `PATCH /cancelacion`.
+  </Card>
+  <Card title="Refund" icon="rotate-left">
+    Issue a refund for an existing transaction via `PATCH /devolucion`.
+  </Card>
+</Columns>
+
+---
+
+## Shared form structure
+
+Both the cancellation and refund panels share the same field layout. Only the justification options and endpoint differ.
+
+### Form fields
+
+<AccordionGroup>
+  <Accordion title="Referencia Financiera" defaultOpen={true}>
+    - **Type:** text  
+    - **Required:** yes — must be exactly 8 characters  
+    - Only numeric digits are accepted; any alphabetic character typed is filtered out in real time.
+    - Validated to have no letters: `/[a-zA-Z]/` check is applied in `validar()`.
+  </Accordion>
+
+  <Accordion title="Número de Tarjeta">
+    - **Type:** text (masked) — identical masking behaviour to the Operator panel  
+    - **Required:** yes — must be exactly 16 digits  
+    - Display toggles between masked (`1234 **** **** 5678`) and plain-with-spaces depending on focus state.
+  </Accordion>
+
+  <Accordion title="Justificación">
+    - **Type:** dropdown (`<select>`)  
+    - **Required:** yes — empty selection is rejected  
+    - Options differ between cancellation and refund (see below).
+  </Accordion>
+</AccordionGroup>
+
+### Validation logic
+
+Both panels call the same `validar()` function with the current form values.
+
+```javascript Supervisor.vue — validar()
+function validar(tarjeta, referencia, justificacion) {
+  if (!tarjeta || tarjeta.length !== 16) {
+    toast.error('❌ El número de tarjeta debe tener 16 dígitos', { timeout: 4000 })
+    return false
+  }
+  if (!referencia || referencia.length !== 8) {
+    toast.error('❌ La referencia financiera debe tener 8 dígitos', { timeout: 4000 })
+    return false
+  }
+  if (/[a-zA-Z]/.test(referencia)) {
+    toast.error('🚨 [Error 400] El folio solo debe contener números', { timeout: 6000 })
+    return false
+  }
+  if (!justificacion) {
+    toast.error('❌ Debes seleccionar una justificación', { timeout: 4000 })
+    return false
+  }
+  return true
+}
+```
+
+### Error handling
+
+<Tabs>
+  <Tab title="HTTP 400">
+    The `mensaje` field from `error.response.data` is shown in a toast notification.
+  </Tab>
+  <Tab title="Other errors">
+    A generic connectivity error is displayed, indicating the mock server may not be running on port 3000.
+  </Tab>
+</Tabs>
+
+---
+
+## Panel 1: Cancellation (Cancelación)
+
+### Justification options
+
+The dropdown is pre-populated with the following options:
+
+- Solicitud del cliente
+- Error en captura de datos
+- Cargo duplicado
+- Transacción no reconocida
+- Producto no disponible
+- Fraude confirmado
+- Error en el monto cobrado
+- Autorización incorrecta
+
+### API call
+
+```javascript Supervisor.vue — PATCH /cancelacion
+await api.patch('/cancelacion', {
+  referencia,
+  tarjeta,
+  justificacion
+})
+```
+
+<Note>
+  The `tarjeta` field is sent as the raw 16-digit value. The server returns the masked version in the response.
+</Note>
+
+### Success response
+
+On HTTP 200, the panel displays the following fields from the API response:
+
+| Field | Display |
+|---|---|
+| `numeroAprobacion` | Approval number |
+| `referenciaFinanciera` | Financial reference |
+| `tarjetaEnmascarada` | Masked card number |
+| `estatus` | Shown in **red** as `Cancelado` |
+
+---
+
+## Panel 2: Refund (Devolución)
+
+### Justification options
+
+The dropdown is pre-populated with the following options:
+
+- Producto defectuoso o dañado
+- Producto no recibido
+- Producto incorrecto enviado
+- Insatisfacción del cliente
+- Cobro incorrecto
+- Servicio no prestado
+- Devolución parcial acordada
+- Contracargo bancario
+- Garantía del producto
+
+### API call
+
+```javascript Supervisor.vue — PATCH /devolucion
+await api.patch('/devolucion', {
+  referencia,
+  tarjeta,
+  justificacion
+})
+```
+
+### Success response
+
+On HTTP 200, the panel displays the same fields as the cancellation response, with one difference:
+
+| Field | Display |
+|---|---|
+| `numeroAprobacion` | Approval number |
+| `referenciaFinanciera` | Financial reference |
+| `tarjetaEnmascarada` | Masked card number |
+| `estatus` | Shown in **orange** as `Devuelto` |
+
+<Tip>
+  The status color distinguishes cancellations (red) from refunds (orange) at a glance — both in the response panel and in the transaction history table.
+</Tip>
