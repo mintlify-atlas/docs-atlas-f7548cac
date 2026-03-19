@@ -1,0 +1,84 @@
+{
+  "projectType": "saas",
+  "projectName": "Orion GoNet Platform",
+  "projectDescription": "A Vue 3 financial transaction management platform with AES encryption, JWT-based role access control, and dashboards for Operators and Supervisors to process sales, cancellations, and refunds.",
+  "theme": "linden",
+  "primaryColor": "#2563eb",
+  "lightColor": "#60a5fa",
+  "darkColor": "#1d4ed8",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/authentication",
+              "concepts/roles",
+              "concepts/aes-encryption"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/operator-panel",
+              "features/supervisor-panel",
+              "features/transaction-history"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment-variables",
+              "configuration/api-setup"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/overview",
+              "api/auth",
+              "api/transactions",
+              "api/cancellation",
+              "api/refund"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "JWT-based authentication with role-based access control (Operator / Supervisor)",
+    "AES end-to-end encryption for sensitive card data (number, CVV, expiration)",
+    "Operator panel for processing sales and querying approved transactions",
+    "Supervisor panel for applying cancellations and refunds with justification",
+    "Operation history with filtering, search, and Excel export",
+    "Dark/light theme toggle throughout the UI",
+    "Real-time toast notifications for operation feedback",
+    "Card number masking (shows only first 4 and last 4 digits)"
+  ],
+  "publicApiSurface": [
+    "POST /login — Authenticate user and receive JWT token",
+    "POST /venta — Process a new sale (Operator role)",
+    "GET /transacciones — Retrieve approved transactions (Operator role)",
+    "PATCH /cancelacion — Apply a cancellation to a transaction (Supervisor role)",
+    "PATCH /devolucion — Apply a refund to a transaction (Supervisor role)",
+    "cifrarAES(valor) — Encrypt a value using AES",
+    "descifrarAES(valorCifrado) — Decrypt an AES-encrypted value",
+    "obtenerHistorial() — Retrieve local operation history",
+    "insertarRegistro(registro) — Insert a new record into local history",
+    "exportarJSON() — Export history as a JSON file",
+    "limpiarHistorial() — Clear all local history"
+  ]
+}
